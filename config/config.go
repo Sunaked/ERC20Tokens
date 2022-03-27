@@ -15,7 +15,7 @@ type Config struct {
 	RPCURL       string `envconfig:"RPC_URL"`
 	HTTPAddr     string `envconfig:"HTTP_ADDR"`
 	TokenDecimal string `envconfig:"TOKEN_DECIMAL"`
-	tokenAddress string `envconfig:"TOKEN_ADDR"`
+	TokenAddress string `envconfig:"TOKEN_ADDR"`
 }
 
 var (

@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
-	"os"
 	"rfc20TokenTransfer/config"
 	"sync"
 
@@ -51,8 +50,8 @@ func SetCORSWhitelist(w http.ResponseWriter) {
 
 //Key is a pair of public and private keys from the ethclient and is used in Token structure.
 type Key struct {
-	public  crypto.PublicKey
-	Private string
+	public  *ecdsa.PublicKey
+	Private *ecdsa.PrivateKey
 }
 
 // type Token interface {
@@ -80,90 +79,26 @@ func GetETHClient() (*ethclient.Client, error) {
 	return client, nil
 }
 
-// Transfer makes a transaction to the ethclient
-func (e *ERC20) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	client := e.ethclient
-	publicKey := e.Key.public
-	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return TxAnswer{}, errors.New("Error with getting publicKeyECDSA from private key: ")
-	}
-
-	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with nonce: " + err.Error())
-	}
-	// fmt.Print("nonce = ", nonce, "\n")
-
-	value := big.NewInt(0)
-	gasPrice, err := client.SuggestGasPrice(context.Background())
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with getting Suggested gasPrice: " + err.Error())
-	}
-	// fmt.Print("suggested gasPrice = ", gasPrice, "\n")
-
-	toAddress := common.HexToAddress(to)
-	tokenAddress := common.HexToAddress(tokenAddr)
-	// fmt.Print("toAddress = ", toAddress, "\n")
-	// fmt.Print("tokenAddress = ", tokenAddress, "\n")
-
-	transferFnSignature := []byte("transfer(address,uint256)")
-	hash := sha3.NewLegacyKeccak256()
-	hash.Write(transferFnSignature)
-	methodID := hash.Sum(nil)[:4]
-	// fmt.Println("\nmethod ID = ", hexutil.Encode(methodID))
-
-	paddedAddress := common.LeftPadBytes(toAddress.Bytes(), 32)
-	// fmt.Println("padded Address = ", hexutil.Encode(paddedAddress))
-
-	amount := new(big.Int)
-	amount.SetUint64(quantity * tokenDecimal)
-
-	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
-	// fmt.Println(hexutil.Encode(paddedAmount))
-	var data []byte
-	data = append(data, methodID...)
-	data = append(data, paddedAddress...)
-	data = append(data, paddedAmount...)
-	gasLimit, err := client.EstimateGas(context.Background(), ethereum.CallMsg{
-		To:   &toAddress,
-		Data: data,
-	})
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with getting estimating gasLimit: " + err.Error())
-	}
-	gasLimit = gasLimit * uint64(3)
-	// fmt.Println("\ngasLimit = ", gasLimit)
-
-	tx := types.NewTransaction(nonce, tokenAddress, value, uint64(gasLimit), gasPrice, data)
-
-	chainID, err := client.NetworkID(context.Background())
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with chainID: " + err.Error())
-	}
-	// fmt.Println("\nchainID = ", chainID)
-
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with signin transaction: " + err.Error())
-	}
-
-	err = client.SendTransaction(context.Background(), signedTx)
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with sending transaction: " + err.Error())
-	}
-
-	// fmt.Printf("\ntx sent: %s\n", signedTx.Hash().Hex())
-	return TxAnswer{gasPrice, gasLimit, nonce, signedTx.Hash().Hex()}, nil
-}
-
 //NewToken creates a connection with ethereum client and makes public key within private.
-func NewToken(ethclient *ethclient.Client, key Key) *ERC20 {
-	return &ERC20{
-		ethclient: ethclient,
-		Key:       key,
+func NewToken(ethclient *ethclient.Client, key Key) (*ERC20, error) {
+	cfg := config.Get()
+	client, err := GetETHClient()
+	if err != nil {
+		return &ERC20{}, errors.New("Something went wrong with getting ethereum client" + err.Error())
 	}
+	privateKey, err := crypto.HexToECDSA(cfg.PrivateKey)
+	if err != nil {
+		return &ERC20{}, errors.New("Error with privateKey: " + err.Error())
+	}
+
+	publicKey := privateKey.Public()
+	return &ERC20{
+		ethclient: client,
+		Key: Key{
+			public:  publicKey.(*ecdsa.PublicKey),
+			Private: privateKey,
+		},
+	}, nil
 }
 
 //TxAnswer is a transaction answer...
@@ -174,103 +109,38 @@ type TxAnswer struct {
 	TransactionHash string   `json:"TransactionHash,string"`
 }
 
-//SendERC20Token sends token according to the given parameters.
-func SendERC20Token(to string, tokenAddr string, quantity uint64, tokenDecimal uint64) (TxAnswer, error) {
+// Transfer makes a transaction to the ethclient
+func (e *ERC20) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	cfg := config.Get()
 
-	client, err := ethclient.Dial(os.Getenv("RAWURL"))
-	// fmt.Println("RAWURL = ", os.Getenv("RAWURL"), "\nKEY = ", os.Getenv("KEY"))
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with Dialing to ethclient: " + err.Error())
-	}
-	defer client.Close()
+	client := e.ethclient
 
-	privateKey, err := crypto.HexToECDSA(os.Getenv("KEY"))
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with privateKey: " + err.Error())
-	}
-
-	publicKey := privateKey.Public()
-	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return TxAnswer{}, errors.New("Error with getting publicKeyECDSA from private key: ")
-	}
+	publicKeyECDSA := e.Key.public
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
 	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
 	if err != nil {
-		return TxAnswer{}, errors.New("Error with nonce: " + err.Error())
+		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with nonce: " + err.Error())}
+		data, _ := json.Marshal(formData)
+		w.Write(data)
+		return
 	}
 	// fmt.Print("nonce = ", nonce, "\n")
 
 	value := big.NewInt(0)
 	gasPrice, err := client.SuggestGasPrice(context.Background())
 	if err != nil {
-		return TxAnswer{}, errors.New("Error with getting Suggested gasPrice: " + err.Error())
+		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with getting Suggested gasPrice: " + err.Error())}
+		data, _ := json.Marshal(formData)
+		w.Write(data)
+		return
 	}
 	// fmt.Print("suggested gasPrice = ", gasPrice, "\n")
 
-	toAddress := common.HexToAddress(to)
-	tokenAddress := common.HexToAddress(tokenAddr)
-	// fmt.Print("toAddress = ", toAddress, "\n")
-	// fmt.Print("tokenAddress = ", tokenAddress, "\n")
-
-	transferFnSignature := []byte("transfer(address,uint256)")
-	hash := sha3.NewLegacyKeccak256()
-	hash.Write(transferFnSignature)
-	methodID := hash.Sum(nil)[:4]
-	// fmt.Println("\nmethod ID = ", hexutil.Encode(methodID))
-
-	paddedAddress := common.LeftPadBytes(toAddress.Bytes(), 32)
-	// fmt.Println("padded Address = ", hexutil.Encode(paddedAddress))
-
-	amount := new(big.Int)
-	amount.SetUint64(quantity * tokenDecimal)
-
-	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
-	// fmt.Println(hexutil.Encode(paddedAmount))
-	var data []byte
-	data = append(data, methodID...)
-	data = append(data, paddedAddress...)
-	data = append(data, paddedAmount...)
-	gasLimit, err := client.EstimateGas(context.Background(), ethereum.CallMsg{
-		To:   &toAddress,
-		Data: data,
-	})
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with getting estimating gasLimit: " + err.Error())
-	}
-	gasLimit = gasLimit * uint64(3)
-	// fmt.Println("\ngasLimit = ", gasLimit)
-
-	tx := types.NewTransaction(nonce, tokenAddress, value, uint64(gasLimit), gasPrice, data)
-
-	chainID, err := client.NetworkID(context.Background())
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with chainID: " + err.Error())
-	}
-	// fmt.Println("\nchainID = ", chainID)
-
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with signin transaction: " + err.Error())
-	}
-
-	err = client.SendTransaction(context.Background(), signedTx)
-	if err != nil {
-		return TxAnswer{}, errors.New("Error with sending transaction: " + err.Error())
-	}
-
-	// fmt.Printf("\ntx sent: %s\n", signedTx.Hash().Hex())
-	return TxAnswer{gasPrice, gasLimit, nonce, signedTx.Hash().Hex()}, nil
-}
-
-//ERC20Tokens gets a POST request with receiver hash and amount of tokens to send, then it proceeds it to the blockchain
-// gets response from it and sends back information to the server in JSON format.
-func ERC20Tokens(w http.ResponseWriter, r *http.Request) {
 	SetCORSWhitelist(w)
 	body, _ := ioutil.ReadAll(r.Body)
 	var u MessageGet
-	err := json.Unmarshal(body, &u)
+	err = json.Unmarshal(body, &u)
 	if err != nil {
 		formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
 		data, err := json.Marshal(formData)
@@ -284,25 +154,202 @@ func ERC20Tokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	txAnswer, err := tokenTransfer(u.Reciever, u.Amount)
+	toAddress := common.HexToAddress(u.Reciever)
+	tokenAddress := common.HexToAddress(cfg.TokenAddress)
+	// fmt.Print("toAddress = ", toAddress, "\n")
+	// fmt.Print("tokenAddress = ", tokenAddress, "\n")
+
+	transferFnSignature := []byte("transfer(address,uint256)")
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write(transferFnSignature)
+	methodID := hash.Sum(nil)[:4]
+	// fmt.Println("\nmethod ID = ", hexutil.Encode(methodID))
+
+	paddedAddress := common.LeftPadBytes(toAddress.Bytes(), 32)
+	// fmt.Println("padded Address = ", hexutil.Encode(paddedAddress))
+
+	amount := new(big.Int)
+	amount.SetUint64(u.Amount * tokenDecimal)
+
+	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
+	// fmt.Println(hexutil.Encode(paddedAmount))
+	var data []byte
+	data = append(data, methodID...)
+	data = append(data, paddedAddress...)
+	data = append(data, paddedAmount...)
+	gasLimit, err := client.EstimateGas(context.Background(), ethereum.CallMsg{
+		To:   &toAddress,
+		Data: data,
+	})
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
+		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with getting estimating gasLimit: " + err.Error())}
 		data, _ := json.Marshal(formData)
 		w.Write(data)
 		return
 	}
-	formData := MessagePost{Errors: false, Answer: txAnswer}
-	data, err := json.Marshal(formData)
+	gasLimit = gasLimit * uint64(3)
+	// fmt.Println("\ngasLimit = ", gasLimit)
+
+	tx := types.NewTransaction(nonce, tokenAddress, value, uint64(gasLimit), gasPrice, data)
+
+	chainID, err := client.NetworkID(context.Background())
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
-		data, _ = json.Marshal(formData)
+		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with chainID: " + err.Error())}
+		data, _ := json.Marshal(formData)
 		w.Write(data)
 		return
 	}
-	w.Write(data)
+	// fmt.Println("\nchainID = ", chainID)
+
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+	if err != nil {
+		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with signin transaction: " + err.Error())}
+		data, _ := json.Marshal(formData)
+		w.Write(data)
+		return
+	}
+
+	err = client.SendTransaction(context.Background(), signedTx)
+	if err != nil {
+		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with sending transaction: " + err.Error())}
+		data, _ := json.Marshal(formData)
+		w.Write(data)
+		return
+	}
+
+	// fmt.Printf("\ntx sent: %s\n", signedTx.Hash().Hex())
+	return TxAnswer{gasPrice, gasLimit, nonce, signedTx.Hash().Hex()}, nil
 }
 
-func tokenTransfer(reciever string, amount uint64) (txAnswer, error) {
-	TxAnswer, err := transfer.SendERC20Token(reciever, tokenAddress, amount, tokenDecimal)
-	return txAnswer{GasPrice: TxAnswer.GasPrice, GasLimit: TxAnswer.GasLimit, Nonce: TxAnswer.Nonce, TransactionHash: TxAnswer.TransactionHash}, err
-}
+// //SendERC20Token sends token according to the given parameters.
+// func SendERC20Token(to string, tokenAddr string, quantity uint64, tokenDecimal uint64) (TxAnswer, error) {
+
+// 	client, err := ethclient.Dial(os.Getenv("RAWURL"))
+// 	// fmt.Println("RAWURL = ", os.Getenv("RAWURL"), "\nKEY = ", os.Getenv("KEY"))
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with Dialing to ethclient: " + err.Error())
+// 	}
+// 	defer client.Close()
+
+// 	privateKey, err := crypto.HexToECDSA(os.Getenv("KEY"))
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with privateKey: " + err.Error())
+// 	}
+
+// 	publicKey := privateKey.Public()
+// 	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+// 	if !ok {
+// 		return TxAnswer{}, errors.New("Error with getting publicKeyECDSA from private key: ")
+// 	}
+
+// 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+// 	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with nonce: " + err.Error())
+// 	}
+// 	// fmt.Print("nonce = ", nonce, "\n")
+
+// 	value := big.NewInt(0)
+// 	gasPrice, err := client.SuggestGasPrice(context.Background())
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with getting Suggested gasPrice: " + err.Error())
+// 	}
+// 	// fmt.Print("suggested gasPrice = ", gasPrice, "\n")
+
+// 	toAddress := common.HexToAddress(to)
+// 	tokenAddress := common.HexToAddress(tokenAddr)
+// 	// fmt.Print("toAddress = ", toAddress, "\n")
+// 	// fmt.Print("tokenAddress = ", tokenAddress, "\n")
+
+// 	transferFnSignature := []byte("transfer(address,uint256)")
+// 	hash := sha3.NewLegacyKeccak256()
+// 	hash.Write(transferFnSignature)
+// 	methodID := hash.Sum(nil)[:4]
+// 	// fmt.Println("\nmethod ID = ", hexutil.Encode(methodID))
+
+// 	paddedAddress := common.LeftPadBytes(toAddress.Bytes(), 32)
+// 	// fmt.Println("padded Address = ", hexutil.Encode(paddedAddress))
+
+// 	amount := new(big.Int)
+// 	amount.SetUint64(quantity * tokenDecimal)
+
+// 	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
+// 	// fmt.Println(hexutil.Encode(paddedAmount))
+// 	var data []byte
+// 	data = append(data, methodID...)
+// 	data = append(data, paddedAddress...)
+// 	data = append(data, paddedAmount...)
+// 	gasLimit, err := client.EstimateGas(context.Background(), ethereum.CallMsg{
+// 		To:   &toAddress,
+// 		Data: data,
+// 	})
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with getting estimating gasLimit: " + err.Error())
+// 	}
+// 	gasLimit = gasLimit * uint64(3)
+// 	// fmt.Println("\ngasLimit = ", gasLimit)
+
+// 	tx := types.NewTransaction(nonce, tokenAddress, value, uint64(gasLimit), gasPrice, data)
+
+// 	chainID, err := client.NetworkID(context.Background())
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with chainID: " + err.Error())
+// 	}
+// 	// fmt.Println("\nchainID = ", chainID)
+
+// 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with signin transaction: " + err.Error())
+// 	}
+
+// 	err = client.SendTransaction(context.Background(), signedTx)
+// 	if err != nil {
+// 		return TxAnswer{}, errors.New("Error with sending transaction: " + err.Error())
+// 	}
+
+// 	// fmt.Printf("\ntx sent: %s\n", signedTx.Hash().Hex())
+// 	return TxAnswer{gasPrice, gasLimit, nonce, signedTx.Hash().Hex()}, nil
+// }
+
+// //ERC20Tokens gets a POST request with receiver hash and amount of tokens to send, then it proceeds it to the blockchain
+// // gets response from it and sends back information to the server in JSON format.
+// func ERC20Tokens(w http.ResponseWriter, r *http.Request) {
+// SetCORSWhitelist(w)
+// body, _ := ioutil.ReadAll(r.Body)
+// var u MessageGet
+// err := json.Unmarshal(body, &u)
+// if err != nil {
+// 	formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
+// 	data, err := json.Marshal(formData)
+// 	if err != nil {
+// 		formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
+// 		data, _ = json.Marshal(formData)
+// 		w.Write(data)
+// 		return
+// 	}
+// 	w.Write(data)
+// 	return
+// }
+
+// txAnswer, err := tokenTransfer(u.Reciever, u.Amount)
+// if err != nil {
+// 	formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
+// 	data, _ := json.Marshal(formData)
+// 	w.Write(data)
+// 	return
+// }
+// formData := MessagePost{Errors: false, Answer: txAnswer}
+// data, err := json.Marshal(formData)
+// if err != nil {
+// 	formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
+// 	data, _ = json.Marshal(formData)
+// 	w.Write(data)
+// 	return
+// }
+// w.Write(data)
+// }
+
+// func tokenTransfer(reciever string, amount uint64) (txAnswer, error) {
+// 	TxAnswer, err := transfer.SendERC20Token(reciever, tokenAddress, amount, tokenDecimal)
+// 	return txAnswer{GasPrice: TxAnswer.GasPrice, GasLimit: TxAnswer.GasLimit, Nonce: TxAnswer.Nonce, TransactionHash: TxAnswer.TransactionHash}, err
+// }

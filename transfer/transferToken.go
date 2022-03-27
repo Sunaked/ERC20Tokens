@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"net/http"
 	"rfc20TokenTransfer/config"
-	"sync"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -64,11 +63,6 @@ type ERC20 struct {
 	Key       Key
 }
 
-var (
-	client *ethclient.Client
-	once   sync.Once
-)
-
 //GetETHClient  creates ethclient.Client connection
 func GetETHClient() (*ethclient.Client, error) {
 	cfg := config.Get()
@@ -80,7 +74,7 @@ func GetETHClient() (*ethclient.Client, error) {
 }
 
 //NewToken creates a connection with ethereum client and makes public key within private.
-func NewToken(ethclient *ethclient.Client, key Key) (*ERC20, error) {
+func NewToken() (*ERC20, error) {
 	cfg := config.Get()
 	client, err := GetETHClient()
 	if err != nil {
@@ -110,7 +104,7 @@ type TxAnswer struct {
 }
 
 // Transfer makes a transaction to the ethclient
-func (e *ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 
 	fromAddress := crypto.PubkeyToAddress(*e.Key.public)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -18,12 +19,15 @@ func main() {
 
 func run() error {
 	router := mux.NewRouter()
-
-	router.HandleFunc("/transferERC20Tokens/", transfer.ERC20()).Methods(http.MethodPost)
+	ERC20Token, err := transfer.NewToken()
+	if err != nil {
+		return fmt.Errorf("Error with making new token, check your configuration(privateKey or RPCURL)")
+	}
+	router.Handle("/transferERC20Tokens/", ERC20Token).Methods(http.MethodPost)
 
 	router.Use(mux.CORSMethodMiddleware(router))
 	c := cors.New(cors.Options{
-		AllowedOrigins: CorsWhiteList,
+		AllowedOrigins: transfer.CorsWhiteList,
 		AllowedMethods: []string{http.MethodPost},
 	})
 
@@ -31,4 +35,5 @@ func run() error {
 	// fmt.Println(CorsWhiteList)
 	// fmt.Printf("Starting server for testing HTTP POST on port = %v...\n", os.Getenv("HTTP_ADDR"))
 	log.Fatal(http.ListenAndServe("localhost:"+os.Getenv("HTTP_ADDR"), handler))
+	return nil
 }

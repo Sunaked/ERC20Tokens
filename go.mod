@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/ethereum/go-ethereum v1.10.16
 	github.com/gorilla/mux v1.8.0
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/rs/cors v1.8.2
 	golang.org/x/crypto v0.0.0-20220321153916-2c7772ba3064
 )

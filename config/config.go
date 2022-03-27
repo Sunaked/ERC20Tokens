@@ -14,7 +14,7 @@ type Config struct {
 	PrivateKey   string `envconfig:"PRIVATE_KEY"`
 	RPCURL       string `envconfig:"RPC_URL"`
 	HTTPAddr     string `envconfig:"HTTP_ADDR"`
-	TokenDecimal string `envconfig:"TOKEN_DECIMAL"`
+	TokenDecimal uint64 `envconfig:"TOKEN_DECIMAL"`
 	TokenAddress string `envconfig:"TOKEN_ADDR"`
 }
 

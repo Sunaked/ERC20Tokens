@@ -35,5 +35,6 @@ func run() error {
 	// fmt.Println(CorsWhiteList)
 	// fmt.Printf("Starting server for testing HTTP POST on port = %v...\n", os.Getenv("HTTP_ADDR"))
 	log.Fatal(http.ListenAndServe("localhost:"+os.Getenv("HTTP_ADDR"), handler))
+
 	return nil
 }

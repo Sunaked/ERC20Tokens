@@ -1,3 +1,3 @@
 #!/bin/bash
 source ./env.sh
-./erc
+go run ./main.go

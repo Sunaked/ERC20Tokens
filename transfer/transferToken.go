@@ -9,7 +9,9 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
+	"os"
 	"rfc20TokenTransfer/config"
+	"strings"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,7 +22,7 @@ import (
 )
 
 //CorsWhiteList is a list of addresses that are allowed to the CORS.
-var CorsWhiteList = []string{"http://localhost:8080/transferERC20Tokens/"}
+var CorsWhiteList = []string{strings.Join([]string{"http://localhost:", os.Getenv("HTTP_ADDR"), "/transferERC20Tokens/"}, "")}
 
 //MessageGet get is a message FROM the server with POST parameters.
 type MessageGet struct {
@@ -103,6 +105,13 @@ type TxAnswer struct {
 	TransactionHash string   `json:"TransactionHash,string"`
 }
 
+//PostError takes error and http.ResponseWriter and writes error to http.
+func PostError(w http.ResponseWriter, err error) {
+	formData := MessagePOSTerror{Errors: true, Reason: err.Error()}
+	data, _ := json.Marshal(formData)
+	w.Write(data)
+}
+
 // Transfer makes a transaction to the ethclient
 func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
@@ -110,9 +119,7 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fromAddress := crypto.PubkeyToAddress(*e.Key.public)
 	nonce, err := e.ethclient.PendingNonceAt(context.Background(), fromAddress)
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with nonce: " + err.Error()).Error()}
-		data, _ := json.Marshal(formData)
-		w.Write(data)
+		PostError(w, errors.New("Error with nonce: "+err.Error()))
 		return
 	}
 	// fmt.Print("nonce = ", nonce, "\n")
@@ -120,14 +127,13 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	value := big.NewInt(0)
 	gasPrice, err := e.ethclient.SuggestGasPrice(context.Background())
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with getting Suggested gasPrice: " + err.Error()).Error()}
-		data, _ := json.Marshal(formData)
-		w.Write(data)
+		PostError(w, errors.New("Error with getting Suggested gasPrice: "+err.Error()))
 		return
 	}
 	// fmt.Print("suggested gasPrice = ", gasPrice, "\n")
 
 	SetCORSWhitelist(w)
+
 	body, _ := ioutil.ReadAll(r.Body)
 	var u MessageGet
 	err = json.Unmarshal(body, &u)
@@ -135,9 +141,7 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
 		data, err := json.Marshal(formData)
 		if err != nil {
-			formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
-			data, _ = json.Marshal(formData)
-			w.Write(data)
+			PostError(w, err)
 			return
 		}
 		w.Write(data)
@@ -172,9 +176,7 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Data: data,
 	})
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with getting estimating gasLimit: " + err.Error()).Error()}
-		data, _ := json.Marshal(formData)
-		w.Write(data)
+		PostError(w, errors.New("Error with getting estimating gasLimit: "+err.Error()))
 		return
 	}
 	gasLimit = gasLimit * uint64(3)
@@ -184,26 +186,20 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	chainID, err := e.ethclient.NetworkID(context.Background())
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with chainID: " + err.Error()).Error()}
-		data, _ := json.Marshal(formData)
-		w.Write(data)
+		PostError(w, errors.New("Error with chainID: "+err.Error()))
 		return
 	}
 	// fmt.Println("\nchainID = ", chainID)
 
 	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), e.Key.Private)
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with signin transaction: " + err.Error()).Error()}
-		data, _ := json.Marshal(formData)
-		w.Write(data)
+		PostError(w, errors.New("Error with signin transaction: "+err.Error()))
 		return
 	}
 
 	err = e.ethclient.SendTransaction(context.Background(), signedTx)
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: errors.New("Error with sending transaction: " + err.Error()).Error()}
-		data, _ := json.Marshal(formData)
-		w.Write(data)
+		PostError(w, errors.New("Error with sending transaction: "+err.Error()))
 		return
 	}
 
@@ -213,9 +209,7 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	formData := MessagePost{Errors: false, Answer: txAnswer}
 	data, err = json.Marshal(formData)
 	if err != nil {
-		formData := MessagePOSTerror{Errors: true, Reason: fmt.Sprint(err)}
-		data, _ = json.Marshal(formData)
-		w.Write(data)
+		PostError(w, err)
 		return
 	}
 	w.Write(data)

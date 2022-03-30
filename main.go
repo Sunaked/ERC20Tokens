@@ -23,6 +23,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("Error with making new token, check your configuration(privateKey or RPCURL)")
 	}
+	go ERC20Token.KeepAlive()
 	router.Handle("/transferERC20Tokens/", ERC20Token).Methods(http.MethodPost)
 
 	router.Use(mux.CORSMethodMiddleware(router))

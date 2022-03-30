@@ -11,11 +11,12 @@ import (
 
 // Config is a config :)
 type Config struct {
-	PrivateKey   string `envconfig:"PRIVATE_KEY"`
-	RPCURL       string `envconfig:"RPC_URL"`
-	HTTPAddr     string `envconfig:"HTTP_ADDR"`
-	TokenDecimal uint64 `envconfig:"TOKEN_DECIMAL"`
-	TokenAddress string `envconfig:"TOKEN_ADDR"`
+	PrivateKey          string `envconfig:"PRIVATE_KEY"`
+	RPCURL              string `envconfig:"RPC_URL"`
+	HTTPAddr            string `envconfig:"HTTP_ADDR"`
+	TokenDecimal        uint64 `envconfig:"TOKEN_DECIMAL"`
+	TokenAddress        string `envconfig:"TOKEN_ADDR"`
+	KeepAlivePollPeriod int    `envconfig:"KEEPALIVE_POLL_PERIOD"`
 }
 
 var (

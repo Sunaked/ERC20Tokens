@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"rfc20TokenTransfer/config"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -73,6 +75,32 @@ func GetETHClient() (*ethclient.Client, error) {
 		return nil, fmt.Errorf("Error with ethclient: %v", err)
 	}
 	return client, nil
+}
+
+// KeepAlive is polling ethclient.Client connection and if connections is lost, it will reconnect.
+func (e *ERC20) KeepAlive() {
+	for {
+		cfg := config.Get()
+
+		var err error
+		// Check if PostgreSQL is alive.
+		time.Sleep(time.Second * time.Duration(cfg.KeepAlivePollPeriod))
+		lostConnect := false
+		if e.ethclient == nil {
+			lostConnect = true
+		} else if _, err := e.ethclient.ChainID(context.Background()); err != nil {
+			lostConnect = true
+		}
+		if !lostConnect {
+			continue
+		}
+		log.Print("[ERC20.ethereumClient] Lost Ethereum connection. Restoring...")
+		e.ethclient, err = GetETHClient()
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+	}
 }
 
 //NewToken creates a connection with ethereum client and makes public key within private.

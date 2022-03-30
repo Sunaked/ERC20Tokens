@@ -110,11 +110,11 @@ func NewToken() (*ERC20, error) {
 	cfg := config.Get()
 	client, err := GetETHClient()
 	if err != nil {
-		return &ERC20{}, errors.New("Something went wrong with getting ethereum client" + err.Error())
+		return nil, errors.New("Something went wrong with getting ethereum client" + err.Error())
 	}
 	privateKey, err := crypto.HexToECDSA(cfg.PrivateKey)
 	if err != nil {
-		return &ERC20{}, errors.New("Error with privateKey: " + err.Error())
+		return nil, errors.New("Error with privateKey: " + err.Error())
 	}
 
 	publicKey := privateKey.Public()

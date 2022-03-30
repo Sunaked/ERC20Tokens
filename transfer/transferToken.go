@@ -81,14 +81,16 @@ func GetETHClient() (*ethclient.Client, error) {
 func (e *ERC20) KeepAlive() {
 	for {
 		cfg := config.Get()
-
+		fromAddress := crypto.PubkeyToAddress(*e.Key.public)
 		var err error
+
 		// Check if PostgreSQL is alive.
 		time.Sleep(time.Second * time.Duration(cfg.KeepAlivePollPeriod))
 		lostConnect := false
+
 		if e.ethclient == nil {
 			lostConnect = true
-		} else if _, err := e.ethclient.ChainID(context.Background()); err != nil {
+		} else if _, err := e.ethclient.PendingNonceAt(context.Background(), fromAddress); err != nil {
 			lostConnect = true
 		}
 		if !lostConnect {
@@ -175,7 +177,6 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 		return
 	}
-
 	toAddress := common.HexToAddress(u.Reciever)
 	tokenAddress := common.HexToAddress(cfg.TokenAddress)
 	// fmt.Print("toAddress = ", toAddress, "\n")

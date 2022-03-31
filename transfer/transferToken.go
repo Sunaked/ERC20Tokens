@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"rfc20TokenTransfer/config"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ var CorsWhiteList = []string{strings.Join([]string{"http://localhost:", os.Geten
 //MessageGet get is a message FROM the server with POST parameters.
 type MessageGet struct {
 	Reciever string `json:"reciever"`
-	Amount   uint64 `json:"amount"`
+	Amount   int    `json:"amount"`
 }
 
 //MessagePost is a message TO server with POST parameters.
@@ -142,6 +143,14 @@ func PostError(w http.ResponseWriter, err error) {
 	w.Write(data)
 }
 
+//AmountOfDecimals returns zeros in quantity of env variable AMOUNT_OF_DECIMALS in string format.
+func AmountOfDecimals() string {
+	cfg := config.Get()
+	var result string
+	result = strings.Repeat("0", cfg.AmountOfDecimals)
+	return result
+}
+
 // Transfer makes a transaction to the ethclient
 func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
@@ -192,7 +201,8 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println("padded Address = ", hexutil.Encode(paddedAddress))
 
 	amount := new(big.Int)
-	amount.SetUint64(u.Amount * cfg.TokenDecimal)
+	amount.SetString(strings.Join([]string{strconv.Itoa(u.Amount), AmountOfDecimals()}, ""), 10)
+	// amount.SetUint64(u.Amount * cfg.TokenDecimal)
 
 	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
 	// fmt.Println(hexutil.Encode(paddedAmount))

@@ -17,6 +17,7 @@ type Config struct {
 	TokenDecimal        uint64 `envconfig:"TOKEN_DECIMAL"`
 	TokenAddress        string `envconfig:"TOKEN_ADDR"`
 	KeepAlivePollPeriod int    `envconfig:"KEEPALIVE_POLL_PERIOD"`
+	AmountOfDecimals    int    `envconfig:"AMOUNT_OF_DECIMALS"`
 }
 
 var (

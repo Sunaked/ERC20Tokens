@@ -12,8 +12,8 @@ export KEEPALIVE_POLL_PERIOD=3
 
 
 # Transfer settings
-export TOKEN_ADDR=0x714edfC7b5896397905CED2b760B3754Ef8E5e01
-export AMOUNT_OF_DECIMALS=18
+export TOKEN_ADDR=
+export AMOUNT_OF_DECIMALS=
 
 
 # Logger settings

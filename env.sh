@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Server settings
-export HTTP_ADDR=8080
+export HTTP_ADDR=
 
 # Client settings
 export PRIVATE_KEY=

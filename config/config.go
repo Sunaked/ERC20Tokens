@@ -18,6 +18,7 @@ type Config struct {
 	TokenAddress        string `envconfig:"TOKEN_ADDR"`
 	KeepAlivePollPeriod int    `envconfig:"KEEPALIVE_POLL_PERIOD"`
 	AmountOfDecimals    int    `envconfig:"AMOUNT_OF_DECIMALS"`
+	FloatPrecision      int    `envconfig:"FLOAT_PRECISION"`
 }
 
 var (

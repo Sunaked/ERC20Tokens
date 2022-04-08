@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # Server settings
-export HTTP_ADDR=8080
 
 # Client settings
-export PRIVATE_KEY=fa4e820f857deb7e19eaa23b16d968e719bf69a2bbea03330f107636b1ef3c01
+export PRIVATE_KEY=
 export RPC_URL=https://smartbch.greyh.at/
 
 # KeepAlivePollPeriod is frequency of polling ethernet connection.

@@ -256,7 +256,7 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	amount := new(big.Int)
 	amt := GetAmountOfDecimals(u.Amount)
 	amount.SetString(amt, 10)
-	fmt.Println("Parsing amount of tokens to transfer = ", amt)
+	// fmt.Println("Parsing amount of tokens to transfer = ", amt)
 
 	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)
 	// fmt.Println(hexutil.Encode(paddedAmount))

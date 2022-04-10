@@ -1,2 +1,5 @@
 .vscode
-
+Makefile
+build.sh
+dockerfile
+tests/

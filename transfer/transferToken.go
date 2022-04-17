@@ -16,6 +16,7 @@ import (
 	"os"
 	"rfc20TokenTransfer/config"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -70,6 +71,7 @@ type ERC20 struct {
 	ethclient *ethclient.Client
 	Key       Key
 	Queue     *list.List
+	nonce     uint64
 }
 
 //GetETHClient  creates ethclient.Client connection
@@ -101,25 +103,20 @@ func (e *ERC20) ServeQueue() {
 		tx := new(types.Transaction)
 		rlp.DecodeBytes(rawTxBytes, &tx)
 		err = e.ethclient.SendTransaction(context.Background(), tx)
-		amountOfPendingTx, err := e.ethclient.PendingTransactionCount(context.Background())
+		// amountOfPendingTx, err := e.ethclient.PendingTransactionCount(context.Background())
 		// fmt.Println("amountOfPendingTx = ", amountOfPendingTx)
-		if err != nil {
-			formData := MessagePOSTerror{Errors: true, Reason: err.Error()}
-			data, _ := json.Marshal(formData)
-			buf := bytes.NewBuffer(data)
-			// PostError(w, errors.New("Error with decoding raw transaction: "+err.Error()))
-			http.Post("localhost:"+os.Getenv("HTTP_ADDR")+"/transferERC20Tokens/", "application/json", buf)
-		}
-		if amountOfPendingTx == 0 {
-			// fmt.Println("Remove transaction from queue")
-			e.Queue.Remove(queValue)
-		}
-		// select {
-		// case <-time.After(2 * time.Second):
-		// 	fmt.Println("tx.Hash() = ", tx.Hash())
-		// 	fmt.Println("tx.Nonce() = ", tx.Nonce())
+		// if err != nil {
+		// 	formData := MessagePOSTerror{Errors: true, Reason: err.Error()}
+		// 	data, _ := json.Marshal(formData)
+		// 	buf := bytes.NewBuffer(data)
+		// 	// PostError(w, errors.New("Error with decoding raw transaction: "+err.Error()))
+		// 	http.Post("localhost:"+os.Getenv("HTTP_ADDR")+"/transferERC20Tokens/", "application/json", buf)
 		// }
-		// fmt.Println("Occured error: ", err)
+		// if amountOfPendingTx == 0 {
+
+		// fmt.Println("SERVE Queue Remove transaction from queue (nonce, hash) = (", tx.Nonce(), ", ", tx.Hash(), ")")
+		e.Queue.Remove(queValue)
+
 	}
 
 	// http.Post("localhost:" + os.Getenv("HTTP_ADDR") + "/transferERC20Tokens/", "application/json", )
@@ -165,9 +162,19 @@ func NewToken() (*ERC20, error) {
 		return nil, errors.New("Error with privateKey: " + err.Error())
 	}
 	publicKey := privateKey.Public()
+	key, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, errors.New("Something went wrong with public key")
+	}
+	fromAddress := crypto.PubkeyToAddress(*key)
+	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+	if err != nil {
+		return nil, errors.New("Error with nonce: " + err.Error())
+	}
 	return &ERC20{
 		ethclient: client,
 		Queue:     list.New(),
+		nonce:     nonce,
 		Key: Key{
 			public:  publicKey.(*ecdsa.PublicKey),
 			Private: privateKey,
@@ -260,21 +267,23 @@ func getMethodID() (methodID []byte) {
 	return
 }
 
+var count uint64
+var mu sync.Mutex
+
 //ServeHTTP sends raw transaction to the queue
 func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 	SetCORSWhitelist(w)
 
 	///////////////////////////////
-	fromAddress := crypto.PubkeyToAddress(*e.Key.public)
-	nonce, err := e.ethclient.PendingNonceAt(context.Background(), fromAddress)
-	// fmt.Println("nonce without len query: ", nonce)
-	nonce += uint64(e.Queue.Len())
+
+	nonce := e.nonce
+	mu.Lock()
+	nonce += count
+	count++
+	mu.Unlock()
 	// fmt.Println("nonce with len queue: ", nonce)
-	if err != nil {
-		PostError(w, errors.New("Error with nonce: "+err.Error()))
-		return
-	}
+
 	// fmt.Print("nonce = ", nonce, "\n")
 
 	gasPrice, err := e.ethclient.SuggestGasPrice(context.Background())
@@ -350,7 +359,7 @@ func (e ERC20) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rawTxHex := hex.EncodeToString(buf.Bytes())
 
 	////////////////// QUEUE //////////////////
-	// fmt.Println("\nAdded into the Queue")
+	// fmt.Println("SERVE HTTP Push transaction to queue (nonce, hash) = (", tx.Nonce(), ", ", signedTx.Hash().Hex(), ")")
 	e.Queue.PushBack(rawTxHex)
 	//////////////////////////////////////////
 

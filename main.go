@@ -23,14 +23,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("Error with making new token, check your configuration(privateKey or RPCURL)")
 	}
-	go ERC20Token.KeepAlive()
-	router.Handle("/transferERC20Tokens/", ERC20Token).Methods(http.MethodPost)
-
 	router.Use(mux.CORSMethodMiddleware(router))
 	c := cors.New(cors.Options{
 		AllowedOrigins: transfer.CorsWhiteList,
 		AllowedMethods: []string{http.MethodPost},
 	})
+	go ERC20Token.KeepAlive()
+	go ERC20Token.ServeQueue()
+	router.Handle("/transferERC20Tokens/", ERC20Token).Methods(http.MethodPost)
 
 	handler := c.Handler(router)
 	// fmt.Println(CorsWhiteList)
